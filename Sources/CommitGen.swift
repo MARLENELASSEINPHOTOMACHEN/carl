@@ -42,8 +42,11 @@ struct CommitGen {
             return
         }
 
+        // Handle --staged flag (reads git diff --cached directly)
+        let useStaged = CommandLine.arguments.contains("--staged") || CommandLine.arguments.contains("-s")
+
         do {
-            try await run()
+            try await run(useStaged: useStaged)
         } catch let error as LanguageModelSession.GenerationError {
             printError("Generation error: \(error.localizedDescription)")
             exit(1)
@@ -53,12 +56,18 @@ struct CommitGen {
         }
     }
 
-    static func run() async throws {
-        let diff = readStdin()
+    static func run(useStaged: Bool) async throws {
+        let diff: String
+        if useStaged {
+            diff = runGitDiffCached()
+        } else {
+            diff = readStdin()
+        }
 
         guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             printError("Usage: git diff --cached | carl")
-            printError("No diff provided on stdin")
+            printError("   or: carl --staged")
+            printError("No diff provided")
             exit(1)
         }
 
@@ -74,6 +83,26 @@ struct CommitGen {
     static func readStdin() -> String {
         let data = FileHandle.standardInput.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    static func runGitDiffCached() -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["diff", "--cached"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8) ?? ""
+        } catch {
+            return ""
+        }
     }
 
     static func truncateDiff(_ diff: String) -> String {

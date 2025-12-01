@@ -2,30 +2,21 @@
 # Copy relevant sections to: ~/Library/Application Support/lazygit/config.yml
 
 customCommands:
-  # Simple: Generate and commit immediately
+  # Ctrl+A: Generate message, show in editable field, then commit
+  - key: '<c-a>'
+    context: 'files'
+    description: 'AI: Generate commit'
+    loadingText: 'Generating commit message...'
+    prompts:
+      - type: 'input'
+        title: 'Commit message (edit if needed):'
+        key: 'Message'
+        initialValue: '{{ runCommand "carl --staged" }}'
+    command: 'git commit -m "{{.Form.Message}}"'
+
+  # Ctrl+G: Generate and commit immediately (no editing)
   - key: '<c-g>'
     context: 'files'
-    description: 'AI: Generate commit message'
+    description: 'AI: Commit now'
     loadingText: 'Generating commit message...'
-    command: 'bash -c ''git commit -m "$(git diff --cached | carl)"'''
-
-  # Edit first: Generate, edit in $EDITOR, then commit
-  - key: '<c-e>'
-    context: 'files'
-    description: 'AI: Generate commit (edit first)'
-    subprocess: true
-    command: |
-      bash -c '
-        MSG=$(git diff --cached | carl)
-        if [ -z "$MSG" ]; then
-          echo "Failed to generate message" >&2
-          exit 1
-        fi
-        TMPFILE=$(mktemp)
-        printf "%s\n" "$MSG" > "$TMPFILE"
-        ${EDITOR:-vim} "$TMPFILE"
-        if [ -s "$TMPFILE" ]; then
-          git commit -F "$TMPFILE"
-        fi
-        rm -f "$TMPFILE"
-      '
+    command: 'git commit -m "$(carl --staged)"'
