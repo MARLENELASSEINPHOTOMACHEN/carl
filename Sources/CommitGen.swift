@@ -6,7 +6,7 @@ struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.0.0"
+    static let version = "1.0.1"
     static let maxDiffLength = 8000
 
     static let instructions = """
@@ -30,7 +30,8 @@ struct CommitGen {
         - First line MUST be under 72 characters
         - Be specific but concise
         - Scope is optional, use when change is focused on specific area
-        - Output ONLY the commit message, no explanations or markdown
+        - Output ONLY the commit message, no explanations
+        - NEVER use backticks, quotes, or markdown formatting - plain text only
         """
 
     // MARK: - Entry Point
