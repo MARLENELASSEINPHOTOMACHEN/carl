@@ -30,8 +30,8 @@ struct CommitGen {
         - First line MUST be under 72 characters
         - Be specific but concise
         - Scope is optional, use when change is focused on specific area
-        - Output ONLY the commit message, no explanations
-        - NEVER use backticks, quotes, or markdown formatting - plain text only
+        - Output ONLY the raw commit message, nothing else
+        - NO markdown: no backticks, no asterisks, no quotes, no formatting
         """
 
     // MARK: - Entry Point

@@ -53,41 +53,37 @@ git diff --cached | carl
 
 ### With lazygit
 
-Add to `~/Library/Application Support/lazygit/config.yml`:
+Add to `~/Library/Application\ Support/lazygit/config.yml`:
 
 ```yaml
 customCommands:
-  # Generate and commit immediately (Ctrl+G)
+  # Ctrl+G: Generate and commit immediately
   - key: '<c-g>'
     context: 'files'
-    description: 'AI commit message'
-    loadingText: 'Generating commit message...'
-    command: 'bash -c ''git commit -m "$(git diff --cached | carl)"'''
+    description: 'AI commit'
+    loadingText: 'Generating...'
+    command: 'git commit -m "$(carl --staged)"'
 
-  # Generate, edit, then commit (Ctrl+E)
-  - key: '<c-e>'
+  # Ctrl+A: Generate, edit, then commit
+  - key: '<c-a>'
     context: 'files'
     description: 'AI commit (edit first)'
-    subprocess: true
-    command: |
-      bash -c '
-        MSG=$(git diff --cached | carl)
-        if [ -z "$MSG" ]; then echo "Failed to generate" >&2; exit 1; fi
-        TMPFILE=$(mktemp)
-        printf "%s\n" "$MSG" > "$TMPFILE"
-        ${EDITOR:-vim} "$TMPFILE"
-        if [ -s "$TMPFILE" ]; then git commit -F "$TMPFILE"; fi
-        rm -f "$TMPFILE"
-      '
+    loadingText: 'Generating...'
+    prompts:
+      - type: 'input'
+        title: 'Commit message:'
+        key: 'Message'
+        initialValue: '{{ runCommand "carl --staged" }}'
+    command: 'git commit -m "{{.Form.Message}}"'
 ```
 
 Then in lazygit's files panel:
-- Press `Ctrl+G` to generate and commit immediately
-- Press `Ctrl+E` to generate, edit the message, then commit
+- `Ctrl+G` — generate and commit immediately
+- `Ctrl+A` — generate, edit the message, then commit
 
 ## How It Works
 
-1. Reads staged diff from stdin
+1. Reads staged diff (via `--staged` flag or stdin)
 2. Sends to Apple's on-device ~3B parameter language model
 3. Returns a conventional commit message
 
