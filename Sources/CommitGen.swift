@@ -43,7 +43,7 @@ struct CommitGen {
         }
 
         // Handle --staged flag (reads git diff --cached directly)
-        let useStaged = CommandLine.arguments.contains("--staged") || CommandLine.arguments.contains("-s")
+        let useStaged = CommandLine.arguments.contains("--staged")
 
         do {
             try await run(useStaged: useStaged)
@@ -87,21 +87,33 @@ struct CommitGen {
 
     static func runGitDiffCached() -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["diff", "--cached"]
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git", "diff", "--cached"]
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
         do {
             try process.run()
+
+            // Read pipes before waiting to avoid deadlock on large diffs
+            let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+            let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+
             process.waitUntilExit()
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8) ?? ""
+            guard process.terminationStatus == 0 else {
+                let errorMsg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                printError("git error: \(errorMsg.isEmpty ? "exit code \(process.terminationStatus)" : errorMsg)")
+                exit(1)
+            }
+
+            return String(data: outData, encoding: .utf8) ?? ""
         } catch {
-            return ""
+            printError("Failed to run git: \(error.localizedDescription)")
+            exit(1)
         }
     }
 
