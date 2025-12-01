@@ -69,6 +69,12 @@ main() {
     echo "  =============="
     echo ""
 
+    # Check if carl is already installed (for messaging)
+    IS_UPDATE=false
+    if command -v carl >/dev/null 2>&1; then
+        IS_UPDATE=true
+    fi
+
     info "Checking requirements..."
     check_requirements
     check_macos_version
@@ -102,7 +108,11 @@ main() {
     fi
 
     echo ""
-    printf "${GREEN}✓ carl installed successfully!${NC}\n"
+    if [ "$IS_UPDATE" = true ]; then
+        printf "${GREEN}✓ carl updated successfully!${NC}\n"
+    else
+        printf "${GREEN}✓ carl installed successfully!${NC}\n"
+    fi
     echo ""
     echo "Usage:"
     echo "  git diff --cached | carl"

@@ -18,6 +18,8 @@ curl -fsSL https://raw.githubusercontent.com/MARLENELASSEINPHOTOMACHEN/carl/main
 
 This downloads the source, builds locally (~30 seconds), and installs to `/usr/local/bin`.
 
+**Update:** Run the same command to update to the latest version.
+
 **Note:** Requires Xcode Command Line Tools. If not installed, run:
 ```bash
 xcode-select --install
