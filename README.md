@@ -25,7 +25,8 @@ This downloads the source, builds locally (~30 seconds), and installs to `/usr/l
 xcode-select --install
 ```
 
-### Manual Install
+<details>
+<summary><strong>Manual Install</strong></summary>
 
 ```bash
 git clone https://github.com/MARLENELASSEINPHOTOMACHEN/carl
@@ -33,6 +34,8 @@ cd carl
 swift build -c release
 sudo cp .build/release/carl /usr/local/bin/
 ```
+
+</details>
 
 ### Uninstall
 
@@ -47,8 +50,14 @@ sudo rm /usr/local/bin/carl
 
 ## Usage
 
-### Standalone
+### Command Line
 
+Generate message from staged changes:
+```bash
+carl --staged
+```
+
+Pipe method (for scripts, git hooks, etc.):
 ```bash
 git diff --cached | carl
 ```
@@ -63,7 +72,36 @@ This adds keybindings to lazygit's files panel:
 - `Ctrl+G` — generate and commit immediately
 - `Ctrl+A` — generate, edit the message, then commit
 
-Works with existing lazygit configs (merges automatically).
+Should work with existing lazygit configs (merges automatically).
+
+<details>
+<summary><strong>Manual setup</strong></summary>
+
+Add to `~/Library/Application\ Support/lazygit/config.yml`:
+
+```yaml
+customCommands:
+  # Ctrl+G: Generate and commit immediately
+  - key: '<c-g>'
+    context: 'files'
+    description: 'AI commit'
+    loadingText: 'Generating...'
+    command: 'git commit -m "$(carl --staged)"'
+
+  # Ctrl+A: Generate, edit, then commit
+  - key: '<c-a>'
+    context: 'files'
+    description: 'AI commit (edit first)'
+    loadingText: 'Generating...'
+    prompts:
+      - type: 'input'
+        title: 'Commit message:'
+        key: 'Message'
+        initialValue: '{{ runCommand "carl --staged" }}'
+    command: 'git commit -m "{{.Form.Message}}"'
+```
+
+</details>
 
 ## How It Works
 
