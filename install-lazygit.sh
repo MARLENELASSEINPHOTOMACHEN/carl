@@ -33,8 +33,8 @@ fi
 # Extract command entries (without customCommands: header)
 CARL_ENTRIES=$(echo "$CARL_CONFIG" | sed -n '/^customCommands:/,$ { /^customCommands:/d; p; }')
 
-if [ -f "$CONFIG" ]; then
-    # Backup existing config
+if [ -f "$CONFIG" ] && [ -s "$CONFIG" ]; then
+    # Backup before modifying
     cp "$CONFIG" "$CONFIG.bak"
 
     if grep -q "^customCommands:" "$CONFIG"; then
@@ -52,6 +52,10 @@ EOF
         { echo ""; echo "$CARL_CONFIG" | sed -n '/^customCommands:/,$p'; } >> "$CONFIG"
         printf "${GREEN}✓${NC} carl commands added to lazygit config\n"
     fi
+
+    printf "  Backup: ${YELLOW}%s.bak${NC}\n" "$CONFIG"
+    echo ""
+    printf "  rm \"%s.bak\"\n" "$CONFIG"
 else
     # Create new config
     mkdir -p "$(dirname "$CONFIG")"

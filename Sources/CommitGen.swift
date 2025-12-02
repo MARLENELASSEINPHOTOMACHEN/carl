@@ -6,7 +6,7 @@ struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.1.0"
+    static let version = "1.1.1"
     static let maxDiffLength = 8000
 
     static let instructions = """

@@ -117,9 +117,7 @@ main() {
     echo "Usage:"
     echo "  git diff --cached | carl"
     echo ""
-    echo "For lazygit integration, see:"
-    echo "  https://github.com/$REPO#with-lazygit"
-    echo "Or run:"
+    printf "${YELLOW}Lazygit integration${NC} (run):\n"
     echo "  carl lazygit"
     echo ""
 }
