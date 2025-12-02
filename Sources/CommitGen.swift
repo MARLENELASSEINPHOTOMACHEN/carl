@@ -6,7 +6,7 @@ struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.0.1"
+    static let version = "1.1.0"
     static let maxDiffLength = 8000
 
     static let instructions = """
@@ -34,12 +34,22 @@ struct CommitGen {
         - NO markdown: no backticks, no asterisks, no quotes, no formatting
         """
 
+    // MARK: - Configuration (lazygit)
+
+    static let lazygitScriptURL = "https://raw.githubusercontent.com/MARLENELASSEINPHOTOMACHEN/carl/main/install-lazygit.sh"
+
     // MARK: - Entry Point
 
     static func main() async {
         // Handle --version flag
         if CommandLine.arguments.contains("--version") || CommandLine.arguments.contains("-v") {
             print("carl \(version)")
+            return
+        }
+
+        // Handle lazygit subcommand
+        if CommandLine.arguments.contains("lazygit") {
+            installLazygitIntegration()
             return
         }
 
@@ -199,6 +209,29 @@ struct CommitGen {
         }
 
         return message.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Lazygit Integration
+
+    static func installLazygitIntegration() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "curl -fsSL '\(lazygitScriptURL)' | sh"]
+        process.standardOutput = FileHandle.standardOutput
+        process.standardError = FileHandle.standardError
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus != 0 {
+                printError("Failed to install lazygit integration")
+                exit(1)
+            }
+        } catch {
+            printError("Failed to run installer: \(error.localizedDescription)")
+            exit(1)
+        }
     }
 
     // MARK: - Utilities

@@ -1,5 +1,5 @@
-# lazygit configuration for carl integration
-# Copy relevant sections to: ~/Library/Application Support/lazygit/config.yml
+# carl lazygit integration
+# Run: carl lazygit
 
 customCommands:
   # Ctrl+A: Generate message, show in editable field, then commit

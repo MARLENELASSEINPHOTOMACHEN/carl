@@ -55,33 +55,15 @@ git diff --cached | carl
 
 ### With lazygit
 
-Add to `~/Library/Application\ Support/lazygit/config.yml`:
-
-```yaml
-customCommands:
-  # Ctrl+G: Generate and commit immediately
-  - key: '<c-g>'
-    context: 'files'
-    description: 'AI commit'
-    loadingText: 'Generating...'
-    command: 'git commit -m "$(carl --staged)"'
-
-  # Ctrl+A: Generate, edit, then commit
-  - key: '<c-a>'
-    context: 'files'
-    description: 'AI commit (edit first)'
-    loadingText: 'Generating...'
-    prompts:
-      - type: 'input'
-        title: 'Commit message:'
-        key: 'Message'
-        initialValue: '{{ runCommand "carl --staged" }}'
-    command: 'git commit -m "{{.Form.Message}}"'
+```bash
+carl lazygit
 ```
 
-Then in lazygit's files panel:
+This adds keybindings to lazygit's files panel:
 - `Ctrl+G` — generate and commit immediately
 - `Ctrl+A` — generate, edit the message, then commit
+
+Works with existing lazygit configs (merges automatically).
 
 ## How It Works
 

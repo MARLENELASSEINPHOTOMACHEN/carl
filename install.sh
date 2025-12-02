@@ -119,6 +119,8 @@ main() {
     echo ""
     echo "For lazygit integration, see:"
     echo "  https://github.com/$REPO#with-lazygit"
+    echo "Or run:"
+    echo "  carl lazygit"
     echo ""
 }
 
