@@ -6,7 +6,7 @@ struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.2.0"
+    static let version = "1.2.1"
     static let maxDiffLength = 8000
 
     static let instructions = """
@@ -232,6 +232,22 @@ struct CommitGen {
         return 80  // fallback
     }
 
+    static func visualWidth(_ str: String) -> Int {
+        // Calculate terminal column width: ASCII = 1, wide chars (CJK, emoji) = 2, others = 1
+        var width = 0
+        for scalar in str.unicodeScalars {
+            if scalar.isASCII {
+                width += 1
+            } else if scalar.value >= 0x1100 {
+                // Wide characters: CJK, emoji, etc.
+                width += 2
+            } else {
+                width += 1
+            }
+        }
+        return width
+    }
+
     static func editablePrompt(prefill: String, prompt: String) -> String? {
         guard isatty(STDIN_FILENO) != 0 else {
             return prefill
@@ -253,28 +269,32 @@ struct CommitGen {
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalTermios)
         }
 
-        var buffer = Array(prefill.utf8)
+        var buffer = Array(prefill)  // Array of Characters for proper Unicode handling
         var cursorPos = buffer.count
-        let promptLen = prompt.count
+        let promptWidth = visualWidth(prompt)
 
         // Save cursor position at start
         fputs("\u{1B}7", stdout)  // DECSC - save cursor
 
+        func textWidth(_ chars: ArraySlice<Character>) -> Int {
+            return visualWidth(String(chars))
+        }
+
         func redraw() {
             let termWidth = getTerminalWidth()
-            let text = String(bytes: buffer, encoding: .utf8) ?? ""
+            let text = String(buffer)
 
             // Restore to saved position and clear to end of screen
             fputs("\u{1B}8\u{1B}[J\(prompt)\(text)", stdout)
 
-            // Position cursor correctly
+            // Position cursor correctly using visual widths
             let cursorOffset = buffer.count - cursorPos
             if cursorOffset > 0 {
-                let cursorTotalPos = promptLen + cursorPos
-                let endTotalPos = promptLen + buffer.count
-                let targetLine = cursorTotalPos / termWidth
-                let endLine = endTotalPos / termWidth
-                let targetCol = cursorTotalPos % termWidth
+                let cursorVisualPos = promptWidth + textWidth(buffer[0..<cursorPos])
+                let endVisualPos = promptWidth + textWidth(buffer[...])
+                let targetLine = cursorVisualPos / termWidth
+                let endLine = endVisualPos / termWidth
+                let targetCol = cursorVisualPos % termWidth
 
                 // Move up if needed
                 let linesToMoveUp = endLine - targetLine
@@ -309,15 +329,15 @@ struct CommitGen {
             case 13, 10:  // Enter
                 // Move to end and newline
                 let termWidth = getTerminalWidth()
-                let cursorTotalPos = promptLen + cursorPos
-                let endTotalPos = promptLen + buffer.count
-                let linesToEnd = (endTotalPos / termWidth) - (cursorTotalPos / termWidth)
+                let cursorVisualPos = promptWidth + textWidth(buffer[0..<cursorPos])
+                let endVisualPos = promptWidth + textWidth(buffer[...])
+                let linesToEnd = (endVisualPos / termWidth) - (cursorVisualPos / termWidth)
                 if linesToEnd > 0 {
                     fputs("\u{1B}[\(linesToEnd)B", stdout)
                 }
                 fputs("\n", stdout)
                 fflush(stdout)
-                let result = String(bytes: buffer, encoding: .utf8) ?? ""
+                let result = String(buffer)
                 return result.isEmpty ? nil : result
 
             case 127, 8:  // Backspace / Delete
@@ -368,12 +388,32 @@ struct CommitGen {
                 redraw()
 
             case 32...126:  // Printable ASCII
-                buffer.insert(c, at: cursorPos)
+                buffer.insert(Character(UnicodeScalar(c)), at: cursorPos)
                 cursorPos += 1
                 redraw()
 
             default:
-                break
+                // Handle multi-byte UTF-8 characters
+                if c >= 0xC0 && c < 0xF8 {
+                    var bytes = [c]
+                    let bytesNeeded: Int
+                    if c < 0xE0 { bytesNeeded = 2 }
+                    else if c < 0xF0 { bytesNeeded = 3 }
+                    else { bytesNeeded = 4 }
+
+                    for _ in 1..<bytesNeeded {
+                        var cont: UInt8 = 0
+                        if read(STDIN_FILENO, &cont, 1) == 1 {
+                            bytes.append(cont)
+                        }
+                    }
+
+                    if let str = String(bytes: bytes, encoding: .utf8), let char = str.first {
+                        buffer.insert(char, at: cursorPos)
+                        cursorPos += 1
+                        redraw()
+                    }
+                }
             }
         }
     }
