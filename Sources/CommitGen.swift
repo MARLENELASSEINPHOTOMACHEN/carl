@@ -1,12 +1,28 @@
 import Foundation
 import FoundationModels
 
+// MARK: - Options
+
+struct Options {
+    var command: Command = .generate
+    var edit: Bool = false
+    var staged: Bool = false
+
+    enum Command {
+        case version
+        case help
+        case lazygit
+        case commit
+        case generate
+    }
+}
+
 @main
 struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.2.1"
+    static let version = "1.3.0"
     static let maxDiffLength = 8000
 
     static let instructions = """
@@ -49,55 +65,87 @@ struct CommitGen {
         "༼ つ ◕_◕ ༽つ ",
         "༼ つ -_- ༽つ ",
         "༼  つ-_- ༽つ ",
-        "༼  つ-_- ༽ つ ",
+        "༼  つ-_- ༽ つ",
         "༼  つ◕_◕ ༽ つ",
         "༼ つ ◕_◕ ༽つ ",
         "༼ つ ◕_◕ ༽つ ",
     ]
     static let doneFrame = "( づ ◕‿◕ )づ ✦"
 
+    // MARK: - Argument Parsing
+
+    static func parseArguments() -> Options {
+        var opts = Options()
+        var args = Array(CommandLine.arguments.dropFirst())
+
+        while !args.isEmpty {
+            let arg = args.removeFirst()
+            switch arg {
+            case "--version", "-v":
+                opts.command = .version
+            case "--help", "-h":
+                opts.command = .help
+            case "--staged":
+                opts.staged = true
+            case "--edit", "-e":
+                opts.edit = true
+            case "lazygit":
+                opts.command = .lazygit
+            case "commit":
+                opts.command = .commit
+            default:
+                if arg.hasPrefix("-") {
+                    printError("Unknown option: \(arg)")
+                    printUsage()
+                    exit(1)
+                }
+            }
+        }
+        return opts
+    }
+
+    static func printUsage() {
+        print("""
+        carl - AI-powered git commit message generator
+
+        USAGE:
+            git diff --cached | carl    Generate message from piped diff
+            carl --staged               Generate message from staged changes
+            carl commit [-e]            Generate and commit (optionally edit)
+            carl lazygit                Install lazygit integration
+
+        OPTIONS:
+            -v, --version    Show version
+            -h, --help       Show this help
+            -e, --edit       Edit message before committing (with 'commit')
+            --staged         Read staged changes directly
+        """)
+    }
+
     // MARK: - Entry Point
 
     static func main() async {
-        // Handle --version flag
-        if CommandLine.arguments.contains("--version") || CommandLine.arguments.contains("-v") {
-            print("carl \(version)")
-            return
-        }
-
-        // Handle lazygit subcommand
-        if CommandLine.arguments.contains("lazygit") {
-            installLazygitIntegration()
-            return
-        }
-
-        // Handle commit subcommand
-        if CommandLine.arguments.contains("commit") {
-            let useEdit = CommandLine.arguments.contains("--edit") ||
-                          CommandLine.arguments.contains("-e")
-            do {
-                try await runCommit(edit: useEdit)
-            } catch let error as LanguageModelSession.GenerationError {
-                clearLine()
-                printError("Generation error: \(error.localizedDescription)")
-                exit(1)
-            } catch {
-                clearLine()
-                printError("Error: \(error.localizedDescription)")
-                exit(1)
-            }
-            return
-        }
-
-        // Handle --staged flag (reads git diff --cached directly)
-        let useStaged = CommandLine.arguments.contains("--staged")
+        let opts = parseArguments()
 
         do {
-            try await run(useStaged: useStaged)
+            switch opts.command {
+            case .version:
+                print("carl \(version)")
+            case .help:
+                printUsage()
+            case .lazygit:
+                installLazygitIntegration()
+            case .commit:
+                try await runCommit(edit: opts.edit)
+            case .generate:
+                try await run(useStaged: opts.staged)
+            }
         } catch let error as LanguageModelSession.GenerationError {
+            clearLine()
             printError("Generation error: \(error.localizedDescription)")
             exit(1)
         } catch {
+            clearLine()
             printError("Error: \(error.localizedDescription)")
             exit(1)
         }
@@ -219,202 +267,6 @@ struct CommitGen {
         } catch {
             printError("Failed to run git commit: \(error.localizedDescription)")
             exit(1)
-        }
-    }
-
-    // MARK: - Line Editor
-
-    static func getTerminalWidth() -> Int {
-        var ws = winsize()
-        if ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 {
-            return Int(ws.ws_col)
-        }
-        return 80  // fallback
-    }
-
-    static func visualWidth(_ str: String) -> Int {
-        // Calculate terminal column width: ASCII = 1, wide chars (CJK, emoji) = 2, others = 1
-        var width = 0
-        for scalar in str.unicodeScalars {
-            if scalar.isASCII {
-                width += 1
-            } else if scalar.value >= 0x1100 {
-                // Wide characters: CJK, emoji, etc.
-                width += 2
-            } else {
-                width += 1
-            }
-        }
-        return width
-    }
-
-    static func editablePrompt(prefill: String, prompt: String) -> String? {
-        guard isatty(STDIN_FILENO) != 0 else {
-            return prefill
-        }
-
-        // Save original terminal settings
-        var originalTermios = termios()
-        tcgetattr(STDIN_FILENO, &originalTermios)
-
-        // Set up raw mode
-        var raw = originalTermios
-        raw.c_lflag &= ~UInt(ICANON | ECHO)
-        raw.c_cc.16 = 1  // VMIN
-        raw.c_cc.17 = 0  // VTIME
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)
-
-        // Restore terminal on exit
-        defer {
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalTermios)
-        }
-
-        var buffer = Array(prefill)  // Array of Characters for proper Unicode handling
-        var cursorPos = buffer.count
-        let promptWidth = visualWidth(prompt)
-
-        // Save cursor position at start
-        fputs("\u{1B}7", stdout)  // DECSC - save cursor
-
-        func textWidth(_ chars: ArraySlice<Character>) -> Int {
-            return visualWidth(String(chars))
-        }
-
-        func redraw() {
-            let termWidth = getTerminalWidth()
-            let text = String(buffer)
-
-            // Restore to saved position and clear to end of screen
-            fputs("\u{1B}8\u{1B}[J\(prompt)\(text)", stdout)
-
-            // Position cursor correctly using visual widths
-            let cursorOffset = buffer.count - cursorPos
-            if cursorOffset > 0 {
-                let cursorVisualPos = promptWidth + textWidth(buffer[0..<cursorPos])
-                let endVisualPos = promptWidth + textWidth(buffer[...])
-                let targetLine = cursorVisualPos / termWidth
-                let endLine = endVisualPos / termWidth
-                let targetCol = cursorVisualPos % termWidth
-
-                // Move up if needed
-                let linesToMoveUp = endLine - targetLine
-                if linesToMoveUp > 0 {
-                    fputs("\u{1B}[\(linesToMoveUp)A", stdout)
-                }
-
-                // Move to correct column
-                fputs("\r", stdout)
-                if targetCol > 0 {
-                    fputs("\u{1B}[\(targetCol)C", stdout)
-                }
-            }
-
-            fflush(stdout)
-        }
-
-        redraw()
-
-        while true {
-            var c: UInt8 = 0
-            let bytesRead = read(STDIN_FILENO, &c, 1)
-
-            guard bytesRead == 1 else { continue }
-
-            switch c {
-            case 3:  // Ctrl+C
-                fputs("\n", stdout)
-                fflush(stdout)
-                return nil
-
-            case 13, 10:  // Enter
-                // Move to end and newline
-                let termWidth = getTerminalWidth()
-                let cursorVisualPos = promptWidth + textWidth(buffer[0..<cursorPos])
-                let endVisualPos = promptWidth + textWidth(buffer[...])
-                let linesToEnd = (endVisualPos / termWidth) - (cursorVisualPos / termWidth)
-                if linesToEnd > 0 {
-                    fputs("\u{1B}[\(linesToEnd)B", stdout)
-                }
-                fputs("\n", stdout)
-                fflush(stdout)
-                let result = String(buffer)
-                return result.isEmpty ? nil : result
-
-            case 127, 8:  // Backspace / Delete
-                if cursorPos > 0 {
-                    buffer.remove(at: cursorPos - 1)
-                    cursorPos -= 1
-                    redraw()
-                }
-
-            case 27:  // Escape sequence (arrow keys)
-                var seq: [UInt8] = [0, 0]
-                if read(STDIN_FILENO, &seq[0], 1) == 1 && read(STDIN_FILENO, &seq[1], 1) == 1 {
-                    if seq[0] == 91 {  // [
-                        switch seq[1] {
-                        case 68:  // Left arrow
-                            if cursorPos > 0 {
-                                cursorPos -= 1
-                                redraw()
-                            }
-                        case 67:  // Right arrow
-                            if cursorPos < buffer.count {
-                                cursorPos += 1
-                                redraw()
-                            }
-                        case 72:  // Home
-                            cursorPos = 0
-                            redraw()
-                        case 70:  // End
-                            cursorPos = buffer.count
-                            redraw()
-                        default:
-                            break
-                        }
-                    }
-                }
-
-            case 1:  // Ctrl+A (Home)
-                cursorPos = 0
-                redraw()
-
-            case 5:  // Ctrl+E (End)
-                cursorPos = buffer.count
-                redraw()
-
-            case 21:  // Ctrl+U (Clear line)
-                buffer.removeAll()
-                cursorPos = 0
-                redraw()
-
-            case 32...126:  // Printable ASCII
-                buffer.insert(Character(UnicodeScalar(c)), at: cursorPos)
-                cursorPos += 1
-                redraw()
-
-            default:
-                // Handle multi-byte UTF-8 characters
-                if c >= 0xC0 && c < 0xF8 {
-                    var bytes = [c]
-                    let bytesNeeded: Int
-                    if c < 0xE0 { bytesNeeded = 2 }
-                    else if c < 0xF0 { bytesNeeded = 3 }
-                    else { bytesNeeded = 4 }
-
-                    for _ in 1..<bytesNeeded {
-                        var cont: UInt8 = 0
-                        if read(STDIN_FILENO, &cont, 1) == 1 {
-                            bytes.append(cont)
-                        }
-                    }
-
-                    if let str = String(bytes: bytes, encoding: .utf8), let char = str.first {
-                        buffer.insert(char, at: cursorPos)
-                        cursorPos += 1
-                        redraw()
-                    }
-                }
-            }
         }
     }
 
