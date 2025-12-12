@@ -8,6 +8,7 @@ struct Options {
     var edit: Bool = false
     var staged: Bool = false
     var dryRun: Bool = false
+    var verbose: Bool = false
 
     enum Command {
         case version
@@ -93,6 +94,8 @@ struct CommitGen {
                 opts.edit = true
             case "--dry-run":
                 opts.dryRun = true
+            case "--verbose":
+                opts.verbose = true
             case "lazygit":
                 opts.command = .lazygit
             case "commit":
@@ -127,6 +130,7 @@ struct CommitGen {
             -e, --edit       Edit message before committing (with 'commit')
             --staged         Read staged changes directly (or only staged for 'auto')
             --dry-run        Show planned commits without executing (with 'auto')
+            --verbose        Show detailed analysis output (with 'auto')
         """)
     }
 
@@ -146,7 +150,7 @@ struct CommitGen {
             case .commit:
                 try await runCommit(edit: opts.edit)
             case .auto:
-                try await AutoCommit.run(dryRun: opts.dryRun, stagedOnly: opts.staged)
+                try await AutoCommit.run(dryRun: opts.dryRun, stagedOnly: opts.staged, verbose: opts.verbose)
             case .generate:
                 try await run(useStaged: opts.staged)
             }

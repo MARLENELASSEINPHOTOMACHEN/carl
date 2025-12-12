@@ -118,7 +118,7 @@ struct AutoCommit {
 
     // MARK: - Entry Point
 
-    static func run(dryRun: Bool, stagedOnly: Bool) async throws {
+    static func run(dryRun: Bool, stagedOnly: Bool, verbose: Bool) async throws {
         // Pass 1: Inventory
         let files = try getChangedFiles(stagedOnly: stagedOnly)
 
@@ -137,7 +137,17 @@ struct AutoCommit {
 
         // Pass 2 & 3: Gather diffs + Summarize
         let binaryFiles = detectBinaryFiles(stagedOnly: stagedOnly)
-        let summaries = try await analyzeFiles(files, stagedOnly: stagedOnly, binaryFiles: binaryFiles)
+        let summaries = try await analyzeFiles(files, stagedOnly: stagedOnly, binaryFiles: binaryFiles, verbose: verbose)
+
+        // Print verbose summaries
+        if verbose && !summaries.isEmpty {
+            print("")
+            print("File summaries:")
+            for (path, summary) in summaries.sorted(by: { $0.key < $1.key }) {
+                print("  \(path)")
+                print("    \(summary.summary) [\(summary.category)] (\(summary.scope))")
+            }
+        }
 
         // Pass 4: Create commit plan
         let plan = try await createCommitPlan(from: summaries, files: files, binaryFiles: binaryFiles)
@@ -217,7 +227,7 @@ struct AutoCommit {
 
     // MARK: - Pass 2 & 3: Analyze Files
 
-    static func analyzeFiles(_ files: [FileChange], stagedOnly: Bool, binaryFiles: Set<String>) async throws -> [String: FileSummary] {
+    static func analyzeFiles(_ files: [FileChange], stagedOnly: Bool, binaryFiles: Set<String>, verbose: Bool) async throws -> [String: FileSummary] {
         // Filter out binary files for LLM analysis
         let textFiles = files.filter { !binaryFiles.contains($0.path) }
 
@@ -229,12 +239,19 @@ struct AutoCommit {
         // Process files sequentially
         var results: [String: FileSummary] = [:]
 
-        for file in textFiles {
+        for (index, file) in textFiles.enumerated() {
+            if verbose {
+                print("  [\(index + 1)/\(textFiles.count)] \(file.path)...")
+            }
+
             let diff = fileDiffs[file.path] ?? ""
 
             // Skip empty diffs
             guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 results[file.path] = fallbackSummary(for: file)
+                if verbose {
+                    print("    (empty diff, using fallback)")
+                }
                 continue
             }
 
@@ -248,6 +265,9 @@ struct AutoCommit {
                 results[file.path] = summary
             } catch {
                 // Retry once
+                if verbose {
+                    print("    (retrying...)")
+                }
                 do {
                     let retrySession = LanguageModelSession()
                     let response = try await retrySession.respond(to: prompt)
@@ -256,6 +276,9 @@ struct AutoCommit {
                 } catch {
                     // Use fallback
                     results[file.path] = fallbackSummary(for: file)
+                    if verbose {
+                        print("    (using fallback due to parse error)")
+                    }
                 }
             }
         }
