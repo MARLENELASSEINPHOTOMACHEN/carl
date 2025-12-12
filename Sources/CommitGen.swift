@@ -7,12 +7,14 @@ struct Options {
     var command: Command = .generate
     var edit: Bool = false
     var staged: Bool = false
+    var dryRun: Bool = false
 
     enum Command {
         case version
         case help
         case lazygit
         case commit
+        case auto
         case generate
     }
 }
@@ -22,7 +24,7 @@ struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.3.0"
+    static let version = "1.4.0"
     static let maxDiffLength = 8000
 
     static let instructions = """
@@ -89,10 +91,14 @@ struct CommitGen {
                 opts.staged = true
             case "--edit", "-e":
                 opts.edit = true
+            case "--dry-run":
+                opts.dryRun = true
             case "lazygit":
                 opts.command = .lazygit
             case "commit":
                 opts.command = .commit
+            case "auto":
+                opts.command = .auto
             default:
                 if arg.hasPrefix("-") {
                     printError("Unknown option: \(arg)")
@@ -112,13 +118,15 @@ struct CommitGen {
             git diff --cached | carl    Generate message from piped diff
             carl --staged               Generate message from staged changes
             carl commit [-e]            Generate and commit (optionally edit)
+            carl auto [--dry-run]       Auto-analyze and create multiple commits
             carl lazygit                Install lazygit integration
 
         OPTIONS:
             -v, --version    Show version
             -h, --help       Show this help
             -e, --edit       Edit message before committing (with 'commit')
-            --staged         Read staged changes directly
+            --staged         Read staged changes directly (or only staged for 'auto')
+            --dry-run        Show planned commits without executing (with 'auto')
         """)
     }
 
@@ -137,6 +145,8 @@ struct CommitGen {
                 installLazygitIntegration()
             case .commit:
                 try await runCommit(edit: opts.edit)
+            case .auto:
+                try await AutoCommit.run(dryRun: opts.dryRun, stagedOnly: opts.staged)
             case .generate:
                 try await run(useStaged: opts.staged)
             }
