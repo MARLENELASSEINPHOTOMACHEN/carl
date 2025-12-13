@@ -25,7 +25,7 @@ struct CommitGen {
 
     // MARK: - Configuration
 
-    static let version = "1.4.0"
+    static let version = "1.4.1"
     static let maxDiffLength = 8000
 
     static let instructions = """
@@ -157,6 +157,8 @@ struct CommitGen {
         } catch let error as LanguageModelSession.GenerationError {
             clearLine()
             printError("Generation error: \(error.localizedDescription)")
+            exit(1)
+        } catch AutoError.alreadyReported {
             exit(1)
         } catch {
             clearLine()
