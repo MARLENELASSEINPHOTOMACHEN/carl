@@ -80,9 +80,6 @@ enum Prompts {
 
 struct AutoResult {
     var successful: [CommitGroup] = []
-    var failed: [(group: CommitGroup, error: String)] = []
-
-    var exitCode: Int32 { failed.isEmpty ? 0 : 1 }
 }
 
 // MARK: - Errors
@@ -92,6 +89,8 @@ enum AutoError: Error, LocalizedError {
     case tooManyFiles(count: Int, limit: Int)
     case gitError(String)
     case parseError(String)
+    case commitFailed(successful: [CommitGroup], failed: CommitGroup, error: String)
+    case alreadyReported  // Error already printed, just exit
 
     var errorDescription: String? {
         switch self {
@@ -103,8 +102,22 @@ enum AutoError: Error, LocalizedError {
             return "Git error: \(msg)"
         case .parseError(let msg):
             return "Failed to parse LLM response: \(msg)"
+        case .commitFailed(_, let failed, let error):
+            return "Commit failed for '\(failed.message)': \(error)"
+        case .alreadyReported:
+            return nil
         }
     }
+}
+
+// MARK: - Git Result
+
+struct GitResult {
+    let output: String
+    let errorOutput: String
+    let exitCode: Int32
+
+    var succeeded: Bool { exitCode == 0 }
 }
 
 // MARK: - AutoCommit
@@ -153,13 +166,12 @@ struct AutoCommit {
         let plan = try await createCommitPlan(from: summaries, files: files, binaryFiles: binaryFiles)
 
         // Pass 5: Execute or display
-        let result = try executeCommits(plan, dryRun: dryRun)
-
-        // Report results
-        printResults(result, dryRun: dryRun, plan: plan)
-
-        if !result.failed.isEmpty {
-            exit(1)
+        do {
+            let result = try executeCommits(plan, dryRun: dryRun)
+            printResults(result, dryRun: dryRun, plan: plan)
+        } catch AutoError.commitFailed(let successful, let failed, let error) {
+            printFailure(successful: successful, failed: failed, error: error, plan: plan)
+            throw AutoError.alreadyReported
         }
     }
 
@@ -376,6 +388,13 @@ struct AutoCommit {
         let response = try await session.respond(to: prompt)
         var plan = try parseCommitPlan(response.content)
 
+        // Validate plan only references files we analyzed
+        let validPaths = Set(summaries.keys)
+        for i in plan.commits.indices {
+            plan.commits[i].files = plan.commits[i].files.filter { validPaths.contains($0) }
+        }
+        plan.commits.removeAll { $0.files.isEmpty }
+
         // Add binary file commits
         plan.commits.append(contentsOf: binaryCommits)
 
@@ -423,12 +442,17 @@ struct AutoCommit {
             return result
         }
 
+        // Fail-fast: stop on first error
         for group in plan.commits {
             do {
                 try stageAndCommit(group)
                 result.successful.append(group)
             } catch {
-                result.failed.append((group, error.localizedDescription))
+                throw AutoError.commitFailed(
+                    successful: result.successful,
+                    failed: group,
+                    error: error.localizedDescription
+                )
             }
         }
 
@@ -438,15 +462,17 @@ struct AutoCommit {
     static func stageAndCommit(_ group: CommitGroup) throws {
         // Stage files
         let stageArgs = ["add"] + group.files
-        let stageOutput = runGit(stageArgs, allowFailure: true)
-        if !stageOutput.isEmpty && stageOutput.contains("fatal:") {
-            throw AutoError.gitError(stageOutput)
+        let stageResult = runGitWithResult(stageArgs)
+        if !stageResult.succeeded {
+            let msg = stageResult.errorOutput.isEmpty ? "exit code \(stageResult.exitCode)" : stageResult.errorOutput
+            throw AutoError.gitError(msg.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 
         // Commit
-        let commitOutput = runGit(["commit", "-m", group.message], allowFailure: true)
-        if commitOutput.contains("fatal:") || commitOutput.contains("error:") {
-            throw AutoError.gitError(commitOutput)
+        let commitResult = runGitWithResult(["commit", "-m", group.message])
+        if !commitResult.succeeded {
+            let msg = commitResult.errorOutput.isEmpty ? "exit code \(commitResult.exitCode)" : commitResult.errorOutput
+            throw AutoError.gitError(msg.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
 
@@ -474,27 +500,43 @@ struct AutoCommit {
                 print("")
             }
 
-            for (group, error) in result.failed {
-                print("  \u{2717} \(group.message)")
-                print("    \(group.files.joined(separator: ", "))")
-                print("    Error: \(error)")
-                print("")
-            }
-
             let successCount = result.successful.count
-            let failCount = result.failed.count
-
-            if failCount == 0 {
-                print("Done. \(successCount) commit\(successCount == 1 ? "" : "s") created.")
-            } else {
-                print("Done. \(successCount) commit\(successCount == 1 ? "" : "s") created, \(failCount) failed.")
-            }
+            print("Done. \(successCount) commit\(successCount == 1 ? "" : "s") created.")
         }
+    }
+
+    static func printFailure(successful: [CommitGroup], failed: CommitGroup, error: String, plan: CommitPlan) {
+        print("")
+        print("Creating \(plan.commits.count) commit\(plan.commits.count == 1 ? "" : "s"):")
+        print("")
+
+        for group in successful {
+            print("  \u{2713} \(group.message)")
+            print("    \(group.files.joined(separator: ", "))")
+            print("")
+        }
+
+        print("  \u{2717} \(failed.message)")
+        print("    \(failed.files.joined(separator: ", "))")
+        print("    Error: \(error)")
+        print("")
+
+        let remaining = plan.commits.count - successful.count - 1
+        if remaining > 0 {
+            print("  ... \(remaining) commit\(remaining == 1 ? "" : "s") skipped")
+            print("")
+        }
+
+        print("Stopped. \(successful.count) commit\(successful.count == 1 ? "" : "s") created, 1 failed.")
     }
 
     // MARK: - Git Helpers
 
-    static func runGit(_ args: [String], allowFailure: Bool = false) -> String {
+    static func runGit(_ args: [String]) -> String {
+        runGitWithResult(args).output
+    }
+
+    static func runGitWithResult(_ args: [String]) -> GitResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git"] + args
@@ -510,14 +552,13 @@ struct AutoCommit {
             let errData = stderr.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
 
-            if process.terminationStatus != 0 && !allowFailure {
-                let errorMsg = String(data: errData, encoding: .utf8) ?? ""
-                return errorMsg
-            }
-
-            return String(data: outData, encoding: .utf8) ?? ""
+            return GitResult(
+                output: String(data: outData, encoding: .utf8) ?? "",
+                errorOutput: String(data: errData, encoding: .utf8) ?? "",
+                exitCode: process.terminationStatus
+            )
         } catch {
-            return ""
+            return GitResult(output: "", errorOutput: error.localizedDescription, exitCode: 1)
         }
     }
 }
