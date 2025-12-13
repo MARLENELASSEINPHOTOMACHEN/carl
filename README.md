@@ -50,7 +50,7 @@ sudo rm /usr/local/bin/carl
 
 ## Usage
 
-### Command Line
+### Generate Message
 
 Generate message from staged changes:
 ```bash
@@ -61,6 +61,42 @@ Pipe method (for scripts, git hooks, etc.):
 ```bash
 git diff --cached | carl
 ```
+
+### Quick Commit
+
+Generate and commit in one step:
+```bash
+carl commit
+```
+
+Edit before committing:
+```bash
+carl commit -e
+```
+
+### Auto-Commit (Multiple Commits)
+
+Automatically analyze all changes and create logical, separate commits:
+```bash
+carl auto
+```
+
+Preview what commits would be created:
+```bash
+carl auto --dry-run
+```
+
+Only process staged changes:
+```bash
+carl auto --staged
+```
+
+Show detailed analysis:
+```bash
+carl auto --verbose
+```
+
+**How it works:** carl analyzes each changed file, groups related changes together (e.g., a feature with its tests), and creates separate commits with appropriate messages. If a commit fails, it stops immediately—no partial surprises.
 
 ### With lazygit
 

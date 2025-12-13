@@ -115,10 +115,11 @@ main() {
     fi
     echo ""
     echo "Usage:"
-    echo "  git diff --cached | carl"
+    echo "  carl --staged          Generate commit message"
+    echo "  carl commit [-e]       Generate and commit (optionally edit)"
+    echo "  carl auto [--dry-run]  Auto-analyze and create multiple commits"
     echo ""
-    printf "${YELLOW}Lazygit integration${NC} (run):\n"
-    echo "  carl lazygit"
+    printf "${YELLOW}Lazygit integration:${NC} carl lazygit\n"
     echo ""
 }
 
