@@ -167,7 +167,7 @@ struct AutoCommit {
 
         // Pass 5: Execute or display
         do {
-            let result = try executeCommits(plan, dryRun: dryRun)
+            let result = try executeCommits(plan, dryRun: dryRun, verbose: verbose)
             printResults(result, dryRun: dryRun, plan: plan)
         } catch AutoError.commitFailed(let successful, let failed, let error) {
             printFailure(successful: successful, failed: failed, error: error, plan: plan)
@@ -435,11 +435,33 @@ struct AutoCommit {
 
     // MARK: - Pass 5: Execute Commits
 
-    static func executeCommits(_ plan: CommitPlan, dryRun: Bool) throws -> AutoResult {
+    static func executeCommits(_ plan: CommitPlan, dryRun: Bool, verbose: Bool) throws -> AutoResult {
         var result = AutoResult()
 
         guard !dryRun else {
             return result
+        }
+
+        // Reset staging area to ensure clean slate
+        // This prevents pre-staged files from being included in the first commit
+        let hasHead = runGitWithResult(["rev-parse", "--verify", "HEAD"]).succeeded
+        if verbose {
+            print("Resetting staging area for clean commit groups...")
+        }
+        if hasHead {
+            let resetResult = runGitWithResult(["reset", "HEAD"])
+            if !resetResult.succeeded {
+                let msg = resetResult.errorOutput.isEmpty ? "exit code \(resetResult.exitCode)" : resetResult.errorOutput
+                throw AutoError.gitError(msg.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        } else {
+            // Initial commit: no HEAD exists, use rm --cached to unstage
+            let resetResult = runGitWithResult(["rm", "-r", "--cached", "."])
+            if !resetResult.succeeded && resetResult.exitCode != 128 {
+                // Exit code 128 means nothing to unstage, which is fine
+                let msg = resetResult.errorOutput.isEmpty ? "exit code \(resetResult.exitCode)" : resetResult.errorOutput
+                throw AutoError.gitError(msg.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
         }
 
         // Fail-fast: stop on first error
