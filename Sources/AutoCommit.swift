@@ -59,9 +59,11 @@ enum Prompts {
         Group these file changes into logical commits.
 
         Rules:
-        - Related changes belong together (feature + its tests, component + its styles)
-        - Separate unrelated work (don't mix "add translation" with "fix error handler")
-        - Commits should be meaningful units of work, not tiny atomic changes
+        - PREFER FEWER, LARGER COMMITS over many small ones
+        - Aim for 2-3 commits maximum for a typical feature branch
+        - Group liberally: combine anything that's part of the same feature or effort
+        - Only separate truly unrelated work (e.g., unrelated bugfix mixed with new feature)
+        - When in doubt, combine into one commit
         - Use conventional commit format: type(scope): description
 
         Respond with ONLY a JSON object (no markdown, no explanation):
